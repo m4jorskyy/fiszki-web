@@ -123,7 +123,7 @@ export function AuthGate({
           <button
             type="button"
             onClick={onToggleLocale}
-            className="min-h-[38px] px-2.5 py-1.5 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-xs font-semibold text-[var(--ink-primary)]"
+            className="min-h-[38px]  px-2.5 py-1.5 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-xs font-semibold text-[var(--ink-primary)]"
           >
             {locale === "pl" ? "PL / EN" : "EN / PL"}
           </button>
