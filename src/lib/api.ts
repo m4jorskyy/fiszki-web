@@ -158,8 +158,14 @@ async function request<T>(
         // ignore parse error
       }
     } else {
-      const text = await res.text();
-      if (text) errMsg = text;
+      const text = (await res.text()).trim();
+      // Never dump HTML error pages (e.g. Cloudflare 502) into the UI
+      const looksLikeHtml = /^<!doctype|^<html|<\/html>/i.test(text);
+      if (looksLikeHtml) {
+        errMsg = `HTTP ${res.status} — server unavailable, try again in a moment`;
+      } else if (text) {
+        errMsg = text.slice(0, 300);
+      }
     }
     throw new ApiError(errMsg, res.status);
   }

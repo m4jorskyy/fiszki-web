@@ -22,9 +22,9 @@ jobs:
       PORT: ${{ github.ref_name == 'main' && '3000' || '3001' }}
       DEPLOY_DIR: ${{ github.ref_name == 'main' && 'C:\fiszki-web\prod' || 'C:\fiszki-web\staging' }}
       NEXT_PUBLIC_DEFAULT_ENV: ${{ github.ref_name == 'main' && 'prod' || 'staging' }}
-      FISZKI_API_URL: ${{ github.ref_name == 'main' && 'http://localhost:8080' || 'http://localhost:8081' }}
-      FISZKI_PROD_API_URL: "http://localhost:8080"
-      FISZKI_STAGING_API_URL: "http://localhost:8081"
+      FISZKI_API_URL: ${{ github.ref_name == 'main' && 'http://127.0.0.1:8080' || 'http://127.0.0.1:8081' }}
+      FISZKI_PROD_API_URL: "http://127.0.0.1:8080"
+      FISZKI_STAGING_API_URL: "http://127.0.0.1:8081"
 
     steps:
       - name: Checkout branch (${{ github.ref_name }})

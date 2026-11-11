@@ -1,23 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 
-const ENV_NAME =
-  process.env.ENV_NAME || process.env.NEXT_PUBLIC_DEFAULT_ENV || "prod";
-const PROD_API_URL =
-  process.env.FISZKI_PROD_API_URL || "http://localhost:8080";
-const STAGING_API_URL =
-  process.env.FISZKI_STAGING_API_URL || "http://localhost:8081";
+// In Next.js standalone mode on Windows/Linux, server.js does not load .env by default.
+// Load .env from process.cwd() once if available so FISZKI_API_URL / PORT are always present.
+function ensureDotEnvLoaded(): void {
+  try {
+    const envFile = path.join(process.cwd(), ".env");
+    if (fs.existsSync(envFile)) {
+      const content = fs.readFileSync(envFile, "utf-8");
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx !== -1) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          const val = trimmed.slice(eqIdx + 1).trim();
+          if (!process.env[key]) {
+            process.env[key] = val;
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore environment file read errors
+  }
+}
+
+ensureDotEnvLoaded();
 
 const MAX_PHOTO_BYTES = 21 * 1024 * 1024; // 21 MB (matches fiszki-server 20 MB photo limit + multipart overhead)
 const MAX_DEFAULT_BYTES = 2 * 1024 * 1024; // 2 MB for JSON / CSV / auth requests
 
 function resolveBackendBaseUrl(): string {
-  if (process.env.FISZKI_API_URL) {
-    return process.env.FISZKI_API_URL.replace(/\/+$/, "");
+  ensureDotEnvLoaded();
+  const envName =
+    process.env.ENV_NAME || process.env.NEXT_PUBLIC_DEFAULT_ENV || "prod";
+  const prodUrl =
+    process.env.FISZKI_PROD_API_URL || "http://127.0.0.1:8080";
+  const stagingUrl =
+    process.env.FISZKI_STAGING_API_URL || "http://127.0.0.1:8081";
+
+  let rawUrl = process.env.FISZKI_API_URL;
+  if (!rawUrl) {
+    rawUrl = envName === "staging" ? stagingUrl : prodUrl;
   }
-  if (ENV_NAME === "staging") {
-    return STAGING_API_URL.replace(/\/+$/, "");
-  }
-  return PROD_API_URL.replace(/\/+$/, "");
+
+  // CRITICAL ON WINDOWS: Node.js 18+ undici resolves 'localhost' to IPv6 [::1],
+  // which causes ECONNREFUSED against Go listeners on 0.0.0.0 / 127.0.0.1.
+  // Always force IPv4 loopback 127.0.0.1.
+  return rawUrl.replace(/\/+$/, "").replace("://localhost:", "://127.0.0.1:");
 }
 
 function isAllowedProxyPath(pathSegments: string[], subPath: string): boolean {
@@ -109,12 +141,12 @@ async function fetchUpstream(
       latencyMs: Date.now() - startedAt,
     };
   } catch (err) {
-    // Only in local dev: if :8081 is not running locally, fall back to :8080
+    // Only in local development fallback: if :8081 is not running locally, fall back to :8080
     if (
       process.env.NODE_ENV !== "production" &&
-      baseUrl === "http://localhost:8081"
+      baseUrl.includes(":8081")
     ) {
-      const fallbackUrl = "http://localhost:8080";
+      const fallbackUrl = "http://127.0.0.1:8080";
       const upstream = await fetch(`${fallbackUrl}/${subPath}${search}`, {
         method,
         headers,

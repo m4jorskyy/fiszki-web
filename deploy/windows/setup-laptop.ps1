@@ -12,6 +12,7 @@ $environments = @(
         Port       = "3000"
         DefaultEnv = "prod"
         Desc       = "Fiszki Web UI Production (main branch, port 3000 -> API :8080)"
+        ApiUrl     = "http://127.0.0.1:8080"
     },
     @{
         Name       = "fiszki-web-staging"
@@ -19,6 +20,7 @@ $environments = @(
         Port       = "3001"
         DefaultEnv = "staging"
         Desc       = "Fiszki Web UI Staging (dev branch, port 3001 -> API :8081)"
+        ApiUrl     = "http://127.0.0.1:8081"
     }
 )
 
@@ -31,26 +33,33 @@ foreach ($env in $environments) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
+    $envLines = @(
+        "NODE_ENV=production",
+        "HOSTNAME=0.0.0.0",
+        "PORT=$($env.Port)",
+        "ENV_NAME=$($env.DefaultEnv)",
+        "NEXT_PUBLIC_DEFAULT_ENV=$($env.DefaultEnv)",
+        "FISZKI_API_URL=$($env.ApiUrl)",
+        "FISZKI_PROD_API_URL=http://127.0.0.1:8080",
+        "FISZKI_STAGING_API_URL=http://127.0.0.1:8081"
+    )
+    $envString = $envLines -join "`n"
+
     if (-not (Get-Service -Name $svcName -ErrorAction SilentlyContinue)) {
         Write-Host "Registering Windows Service: $svcName ..."
         nssm install $svcName $nodePath $serverJs
         nssm set $svcName AppDirectory $dir
         nssm set $svcName Description $env.Desc
         nssm set $svcName Start SERVICE_AUTO_START
-        nssm set $svcName AppEnvironmentExtra `
-            "NODE_ENV=production" `
-            "HOSTNAME=0.0.0.0" `
-            "PORT=$($env.Port)" `
-            "NEXT_PUBLIC_DEFAULT_ENV=$($env.DefaultEnv)" `
-            "FISZKI_PROD_API_URL=http://localhost:8080" `
-            "FISZKI_STAGING_API_URL=http://localhost:8081"
+        nssm set $svcName AppEnvironmentExtra $envString
         nssm set $svcName AppStdout (Join-Path $logDir "stdout.log")
         nssm set $svcName AppStderr (Join-Path $logDir "stderr.log")
         nssm set $svcName AppRotateFiles 1
         nssm set $svcName AppRotateBytes 10485760
         Write-Host "Registered $svcName on port $($env.Port)."
     } else {
-        Write-Host "Service $svcName already exists."
+        Write-Host "Service $svcName already exists. Updating environment..."
+        nssm set $svcName AppEnvironmentExtra $envString
     }
 }
 
