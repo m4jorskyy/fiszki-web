@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const ENV_NAME =
+  process.env.ENV_NAME || process.env.NEXT_PUBLIC_DEFAULT_ENV || "prod";
 const PROD_API_URL =
   process.env.FISZKI_PROD_API_URL || "http://localhost:8080";
 const STAGING_API_URL =
-  process.env.FISZKI_STAGING_API_URL || "http://localhost:8080";
-const DEFAULT_ENV = process.env.NEXT_PUBLIC_DEFAULT_ENV || "prod";
+  process.env.FISZKI_STAGING_API_URL || "http://localhost:8081";
 
-function resolveBackendBaseUrl(req: NextRequest): string {
-  const envHeader = req.headers.get("x-fiszki-env") || DEFAULT_ENV;
-  const customUrl = req.headers.get("x-fiszki-custom-url")?.trim();
-
-  if (envHeader === "custom" && customUrl) {
-    return customUrl.replace(/\/+$/, "");
+function resolveBackendBaseUrl(): string {
+  if (process.env.FISZKI_API_URL) {
+    return process.env.FISZKI_API_URL.replace(/\/+$/, "");
   }
-  if (envHeader === "staging") {
+  if (ENV_NAME === "staging") {
     return STAGING_API_URL.replace(/\/+$/, "");
   }
   return PROD_API_URL.replace(/\/+$/, "");
@@ -41,8 +39,11 @@ async function fetchUpstream(
       latencyMs: Date.now() - startedAt,
     };
   } catch (err) {
-    // If staging (:8081) was selected locally but fiszki-server is running on :8080 (.env default), seamlessly fallback to :8080
-    if (baseUrl === "http://localhost:8081") {
+    // Only in local dev: if :8081 is not running locally, fall back to :8080
+    if (
+      process.env.NODE_ENV !== "production" &&
+      baseUrl === "http://localhost:8081"
+    ) {
       const fallbackUrl = "http://localhost:8080";
       const upstream = await fetch(`${fallbackUrl}/${subPath}${search}`, {
         method,
@@ -65,7 +66,7 @@ async function handleProxy(
   context: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {
   const { path } = await context.params;
-  const baseUrl = resolveBackendBaseUrl(req);
+  const baseUrl = resolveBackendBaseUrl();
   const subPath = path.join("/");
   const search = req.nextUrl.search || "";
 
@@ -129,26 +130,9 @@ async function handleProxy(
     const message =
       err instanceof Error ? err.message : "Failed to reach fiszki-server";
 
-    // For /healthz probes, return 200 with status="unreachable" so the browser console is not polluted with 502 errors
-    if (subPath === "healthz") {
-      return NextResponse.json(
-        {
-          status: "unreachable",
-          error: `Cannot connect to fiszki-server at ${baseUrl} (${message})`,
-          target_url: baseUrl,
-        },
-        {
-          status: 200,
-          headers: {
-            "x-fiszki-target": baseUrl,
-          },
-        }
-      );
-    }
-
     return NextResponse.json(
       {
-        error: `Cannot connect to fiszki-server at ${baseUrl}. Make sure fiszki-server is running on port 8080 (${message}).`,
+        error: `Cannot connect to fiszki-server (${message}).`,
         target_url: baseUrl,
       },
       {

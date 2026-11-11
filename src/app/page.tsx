@@ -1,19 +1,11 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import {
-  BackendConnectionConfig,
-  BackendEnv,
-  Deck,
-  HealthStatus,
-  StudyStatsOverview,
-} from "@/lib/types";
+import { Deck, StudyStatsOverview } from "@/lib/types";
 import {
   clearStoredSession,
   fiszkiApi,
-  getBackendConfig,
   getStoredSession,
-  setBackendConfig,
   StoredSession,
 } from "@/lib/api";
 import { Locale, translations } from "@/lib/i18n";
@@ -32,10 +24,6 @@ import {
   LogOut,
   Moon,
   Sun,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  Server,
   X,
   MoreVertical,
   Edit3,
@@ -48,14 +36,6 @@ export default function FiszkiWorkspacePage() {
   const [hydrated, setHydrated] = useState(false);
   const [locale, setLocale] = useState<Locale>("pl");
   const [darkMode, setDarkMode] = useState<boolean>(false);
-
-  const [backendConfig, setBackendConfigState] =
-    useState<BackendConnectionConfig>({ env: "staging" });
-  const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [showEnvModal, setShowEnvModal] = useState<boolean>(false);
-  const [customUrlDraft, setCustomUrlDraft] = useState<string>(
-    "http://localhost:8080"
-  );
 
   const [session, setSession] = useState<StoredSession | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
@@ -87,11 +67,6 @@ export default function FiszkiWorkspacePage() {
   const [savingDeckEdit, setSavingDeckEdit] = useState<boolean>(false);
 
   const t = translations[locale];
-
-  const refreshHealth = useCallback(async () => {
-    const h = await fiszkiApi.checkHealth();
-    setHealth(h);
-  }, []);
 
   const loadWorkspaceData = useCallback(async () => {
     setLoadingWorkspace(true);
@@ -149,18 +124,13 @@ export default function FiszkiWorkspacePage() {
     setDarkMode(prefersDark);
     document.documentElement.classList.toggle("dark", prefersDark);
 
-    const cfg = getBackendConfig();
-    setBackendConfigState(cfg);
-    if (cfg.customUrl) setCustomUrlDraft(cfg.customUrl);
-
     const existingSession = getStoredSession();
     if (existingSession) {
       setSession(existingSession);
     }
 
     setHydrated(true);
-    void refreshHealth();
-  }, [refreshHealth]);
+  }, []);
 
   const isAuthenticated = Boolean(session?.accessToken);
 
@@ -181,12 +151,6 @@ export default function FiszkiWorkspacePage() {
     setDarkMode(next);
     document.documentElement.classList.toggle("dark", next);
     localStorage.setItem("fiszki_theme_v1", next ? "dark" : "light");
-  }
-
-  function handleUpdateBackendConfig(cfg: BackendConnectionConfig) {
-    setBackendConfig(cfg);
-    setBackendConfigState(cfg);
-    void refreshHealth();
   }
 
   async function handleLogout() {
@@ -262,10 +226,6 @@ export default function FiszkiWorkspacePage() {
         onToggleLocale={handleToggleLocale}
         darkMode={darkMode}
         onToggleDarkMode={handleToggleDarkMode}
-        health={health}
-        backendConfig={backendConfig}
-        onUpdateBackendConfig={handleUpdateBackendConfig}
-        onRefreshHealth={() => void refreshHealth()}
         onAuthenticated={(newSession) => setSession(newSession)}
       />
     );
@@ -374,28 +334,12 @@ export default function FiszkiWorkspacePage() {
             </nav>
           </div>
 
-          {/* Right Controls: Health/Env Pill, PL/EN, Dark Mode, Logout */}
+          {/* Right Controls: PL/EN, Dark Mode, Logout */}
           <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setShowEnvModal(true)}
-              className="min-h-[34px] px-2 py-1 rounded border border-[var(--border-paper)] bg-[var(--bg-elevated)] text-[11px] font-mono-tabular flex items-center gap-1.5"
-              title={session.user.email}
-            >
-              {health?.status === "ok" ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-[var(--stamp-verdigris)]" />
-              ) : health?.status === "db_unreachable" ? (
-                <AlertTriangle className="w-3.5 h-3.5 text-[var(--amber-hard)]" />
-              ) : (
-                <XCircle className="w-3.5 h-3.5 text-[var(--rule-crimson)]" />
-              )}
-              <span className=" uppercase">{backendConfig.env}</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handleToggleLocale}
-              className="min-h-[34px] px-2 py-1 rounded border border-[var(--border-paper)] bg-[var(--bg-elevated)] text-xs font-semibold"
+              className="min-h-[34px] px-2 py-1 rounded border border-[var(--border-paper)] bg-[var(--bg-elevated)] text-xs font-semibold cursor-pointer"
             >
               {locale.toUpperCase()}
             </button>
@@ -941,110 +885,6 @@ export default function FiszkiWorkspacePage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Environment & Server Health Modal */}
-      {showEnvModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="w-full sm:max-w-md index-card crimson-top-rule rounded-t-xl sm:rounded-md p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-paper)]">
-              <div className="flex items-center gap-2">
-                <Server className="w-4 h-4 text-[var(--accent-cobalt)]" />
-                <h3 className="font-serif-card text-lg font-semibold">
-                  {t.env.configureTitle}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowEnvModal(false)}
-                className="p-1.5 rounded border border-[var(--border-paper)]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-[var(--ink-secondary)]">
-              {t.env.configureDesc}
-            </p>
-
-            <div className="space-y-2">
-              {(["staging", "prod", "custom"] as BackendEnv[]).map((envKey) => (
-                <button
-                  key={envKey}
-                  type="button"
-                  onClick={() =>
-                    handleUpdateBackendConfig({
-                      env: envKey,
-                      customUrl:
-                        envKey === "custom" ? customUrlDraft.trim() : undefined,
-                    })
-                  }
-                  className={`w-full min-h-[44px] px-3.5 py-2 rounded border text-left text-xs font-semibold flex items-center justify-between ${
-                    backendConfig.env === envKey
-                      ? "border-[var(--accent-cobalt)] bg-[var(--accent-cobalt-soft)] text-[var(--accent-cobalt)]"
-                      : "border-[var(--border-paper)] bg-[var(--bg-elevated)]"
-                  }`}
-                >
-                  <span>
-                    {envKey === "staging"
-                      ? t.env.staging
-                      : envKey === "prod"
-                        ? t.env.prod
-                        : t.env.custom}
-                  </span>
-                  {backendConfig.env === envKey && (
-                    <CheckCircle2 className="w-4 h-4" />
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {backendConfig.env === "custom" && (
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-[var(--ink-secondary)]">
-                  {t.env.customUrlLabel}
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={customUrlDraft}
-                    onChange={(e) => setCustomUrlDraft(e.target.value)}
-                    className="flex-1 min-h-[40px] px-3 py-1.5 rounded border border-[var(--border-paper)] bg-[var(--bg-elevated)] text-xs font-mono-tabular"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleUpdateBackendConfig({
-                        env: "custom",
-                        customUrl: customUrlDraft.trim(),
-                      })
-                    }
-                    className="px-3 py-1.5 rounded bg-[var(--accent-cobalt)] text-white text-xs font-semibold"
-                  >
-                    {t.env.saveEnv}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {health && (
-              <div className="p-3 rounded bg-[var(--bg-recessed)] border border-[var(--border-paper)] text-xs font-mono-tabular flex items-center justify-between">
-                <span className="truncate">{health.targetUrl}</span>
-                <span>
-                  {health.status === "ok"
-                    ? `${t.env.serverOnline}${
-                        health.latencyMs !== undefined
-                          ? ` (${health.latencyMs}ms)`
-                          : ""
-                      }`
-                    : health.status === "db_unreachable"
-                      ? t.env.dbUnreachable
-                      : t.env.serverOffline}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       )}
