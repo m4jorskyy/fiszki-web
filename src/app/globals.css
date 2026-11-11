@@ -1,0 +1,237 @@
+@import "tailwindcss";
+
+:root {
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Blush Pink, Orchid Purple & Jet Black (Light Mode) */
+  --bg-desk: #fcebf4;
+  --bg-card: #fff7fb;
+  --bg-elevated: #ffffff;
+  --bg-recessed: #f5d8e8;
+  --ink-primary: #110918;
+  --ink-secondary: #583566;
+  --ink-muted: #8c629c;
+  --border-paper: #e8b8d4;
+  --border-strong: #d482b6;
+  --accent-cobalt: #ec4899;
+  --accent-cobalt-soft: rgba(236, 72, 153, 0.14);
+  --accent-purple: #9333ea;
+  --accent-purple-soft: rgba(147, 51, 234, 0.14);
+  --rule-crimson: #e11d48;
+  --rule-crimson-soft: rgba(225, 29, 72, 0.13);
+  --stamp-verdigris: #a855f7;
+  --stamp-verdigris-soft: rgba(168, 85, 247, 0.15);
+  --amber-hard: #c026d3;
+  --amber-hard-soft: rgba(192, 38, 211, 0.14);
+  --card-rule-line: rgba(236, 72, 153, 0.1);
+  --stack-shadow-1: #fbdff0;
+  --stack-shadow-2: #f4c8e3;
+}
+
+.dark {
+  /* Obsidian Black, Peony Pink & Electric Purple (Signature Dark Mode) */
+  --bg-desk: #09060e;
+  --bg-card: #140d1f;
+  --bg-elevated: #1e142e;
+  --bg-recessed: #0e0916;
+  --ink-primary: #fdf2f8;
+  --ink-secondary: #d8b4e2;
+  --ink-muted: #936ba0;
+  --border-paper: #35204a;
+  --border-strong: #6b3488;
+  --accent-cobalt: #ff4d94;
+  --accent-cobalt-soft: rgba(255, 77, 148, 0.18);
+  --accent-purple: #c084fc;
+  --accent-purple-soft: rgba(192, 132, 252, 0.18);
+  --rule-crimson: #fb7185;
+  --rule-crimson-soft: rgba(251, 113, 133, 0.18);
+  --stamp-verdigris: #c084fc;
+  --stamp-verdigris-soft: rgba(192, 132, 252, 0.18);
+  --amber-hard: #e879f9;
+  --amber-hard-soft: rgba(232, 121, 249, 0.18);
+  --card-rule-line: rgba(255, 77, 148, 0.08);
+  --stack-shadow-1: #100a19;
+  --stack-shadow-2: #0c0713;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background-color: var(--bg-desk);
+  background-image:
+    radial-gradient(circle at 15% 10%, rgba(236, 72, 153, 0.12), transparent 38%),
+    radial-gradient(circle at 85% 85%, rgba(168, 85, 247, 0.14), transparent 42%);
+  color: var(--ink-primary);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+.font-serif-card {
+  font-family: var(--font-serif), Georgia, serif;
+}
+
+.font-mono-tabular {
+  font-family: var(--font-mono), monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Velvet & Peony Card Surface */
+.index-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-paper);
+  border-radius: 14px;
+  position: relative;
+}
+
+/* Stacked physical index cards effect in Pink/Purple/Black */
+.index-stack {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-paper);
+  border-radius: 16px;
+  box-shadow:
+    0 4px 0 -1px var(--stack-shadow-1),
+    0 4px 0 0 var(--border-paper),
+    0 8px 0 -2px var(--stack-shadow-2),
+    0 8px 0 -1px var(--border-paper),
+    0 14px 32px -8px rgba(236, 72, 153, 0.22);
+}
+
+/* Subtle horizontal stationery lines */
+.bristol-ruled {
+  background-color: var(--bg-card);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 31px,
+    var(--card-rule-line) 31px,
+    var(--card-rule-line) 32px
+  );
+  background-position: 0 20px;
+}
+
+.crimson-top-rule {
+  border-top: 3px solid var(--accent-cobalt);
+}
+
+.purple-top-rule {
+  border-top: 3px solid var(--accent-purple);
+}
+
+/* 3D Physical Card Flip Animation */
+.card-flip-scene {
+  perspective: 1400px;
+  -webkit-perspective: 1400px;
+}
+
+.card-flip-inner {
+  position: relative;
+  width: 100%;
+  min-height: 330px;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (min-width: 640px) {
+  .card-flip-inner {
+    min-height: 380px;
+  }
+}
+
+.card-flip-inner.is-flipped {
+  transform: rotateY(180deg);
+}
+
+.card-flip-inner.no-transition {
+  transition: none !important;
+}
+
+.card-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.card-face-front {
+  transform: rotateY(0deg);
+}
+
+.card-face-back {
+  transform: rotateY(180deg);
+}
+
+/* Quick Shadow Out/In Screen Transition */
+@keyframes screenShadowTransition {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+    filter: brightness(0.55) drop-shadow(0 18px 28px rgba(9, 6, 14, 0.75));
+  }
+  45% {
+    opacity: 0.85;
+    filter: brightness(0.88) drop-shadow(0 10px 18px rgba(236, 72, 153, 0.2));
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1) drop-shadow(0 0 0 transparent);
+  }
+}
+
+@keyframes shadowCurtainPulse {
+  0% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.screen-transition-stage {
+  position: relative;
+  animation: screenShadowTransition 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform, filter;
+}
+
+.screen-transition-stage::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 25;
+  background: radial-gradient(
+    circle at 50% 35%,
+    rgba(20, 13, 31, 0.35),
+    rgba(9, 6, 14, 0.75)
+  );
+  animation: shadowCurtainPulse 240ms ease-out forwards;
+}
+
+/* Accessible focus rings */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent-cobalt);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-flip-inner {
+    transition: transform 0.15s ease-out;
+  }
+}

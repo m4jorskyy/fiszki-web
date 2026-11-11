@@ -1,0 +1,26 @@
+# Cloudflare Tunnel configuration for Windows Laptop (C:\Users\<You>\.cloudflared\config.yml)
+# Add these two Public Hostnames alongside your fiszki-server hostnames:
+#   1. fiszki.yourdomain.com         -> http://localhost:3000  (Production Web UI -> proxies to :8080)
+#   2. staging-fiszki.yourdomain.com -> http://localhost:3001  (Staging Web UI    -> proxies to :8081)
+
+tunnel: <YOUR-TUNNEL-UUID>
+credentials-file: C:\Users\<YOUR-WINDOWS-USER>\.cloudflared\<YOUR-TUNNEL-UUID>.json
+
+ingress:
+  # Fiszki Web UI Production (main branch -> port 3000)
+  - hostname: fiszki.yourdomain.com
+    service: http://localhost:3000
+
+  # Fiszki Web UI Staging (dev branch -> port 3001)
+  - hostname: staging-fiszki.yourdomain.com
+    service: http://localhost:3001
+
+  # Fiszki Server API Production (main branch -> port 8080)
+  - hostname: api.yourdomain.com
+    service: http://localhost:8080
+
+  # Fiszki Server API Staging (dev branch -> port 8081)
+  - hostname: staging-api.yourdomain.com
+    service: http://localhost:8081
+
+  - service: http_status:404

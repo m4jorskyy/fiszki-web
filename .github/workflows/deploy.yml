@@ -1,0 +1,48 @@
+name: CI & Deploy Web UI (Windows Self-Hosted Runner)
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+concurrency:
+  group: deploy-web-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  test-and-deploy:
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: powershell
+    env:
+      ENV_NAME: ${{ github.ref_name == 'main' && 'prod' || 'staging' }}
+      SERVICE_NAME: ${{ github.ref_name == 'main' && 'fiszki-web-prod' || 'fiszki-web-staging' }}
+      PORT: ${{ github.ref_name == 'main' && '3000' || '3001' }}
+      DEPLOY_DIR: ${{ github.ref_name == 'main' && 'C:\fiszki-web\prod' || 'C:\fiszki-web\staging' }}
+      NEXT_PUBLIC_DEFAULT_ENV: ${{ github.ref_name == 'main' && 'prod' || 'staging' }}
+      FISZKI_PROD_API_URL: "http://localhost:8080"
+      FISZKI_STAGING_API_URL: "http://localhost:8081"
+
+    steps:
+      - name: Checkout branch (${{ github.ref_name }})
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests & TypeScript check
+        run: |
+          npm test
+          npm run typecheck
+
+      - name: Build Next.js standalone bundle
+        run: npm run build
+
+      - name: Deploy and restart Windows Service
+        run: |
+          .\deploy\windows\deploy-service.ps1 `
+            -ServiceName $env:SERVICE_NAME `
+            -DeployDir $env:DEPLOY_DIR `
+            -Port $env:PORT
