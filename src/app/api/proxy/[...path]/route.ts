@@ -7,6 +7,9 @@ const PROD_API_URL =
 const STAGING_API_URL =
   process.env.FISZKI_STAGING_API_URL || "http://localhost:8081";
 
+const MAX_PHOTO_BYTES = 21 * 1024 * 1024; // 21 MB (matches fiszki-server 20 MB photo limit + multipart overhead)
+const MAX_DEFAULT_BYTES = 2 * 1024 * 1024; // 2 MB for JSON / CSV / auth requests
+
 function resolveBackendBaseUrl(): string {
   if (process.env.FISZKI_API_URL) {
     return process.env.FISZKI_API_URL.replace(/\/+$/, "");
@@ -15,6 +18,73 @@ function resolveBackendBaseUrl(): string {
     return STAGING_API_URL.replace(/\/+$/, "");
   }
   return PROD_API_URL.replace(/\/+$/, "");
+}
+
+function isAllowedProxyPath(pathSegments: string[], subPath: string): boolean {
+  if (pathSegments.length === 0) return false;
+  for (const seg of pathSegments) {
+    if (
+      !seg ||
+      seg === "." ||
+      seg === ".." ||
+      seg.includes("\\") ||
+      seg.includes("/") ||
+      seg.includes("\0")
+    ) {
+      return false;
+    }
+  }
+  return subPath === "healthz" || subPath.startsWith("api/v1/");
+}
+
+async function readBoundedBody(
+  req: NextRequest,
+  maxBytes: number
+): Promise<{ body?: Uint8Array; tooLarge: boolean }> {
+  const contentLengthHeader = req.headers.get("content-length");
+  if (contentLengthHeader) {
+    const declaredLength = Number(contentLengthHeader);
+    if (!Number.isNaN(declaredLength) && declaredLength > maxBytes) {
+      return { tooLarge: true };
+    }
+  }
+
+  if (!req.body) {
+    return { body: undefined, tooLarge: false };
+  }
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        totalBytes += value.byteLength;
+        if (totalBytes > maxBytes) {
+          await reader.cancel();
+          return { tooLarge: true };
+        }
+        chunks.push(value);
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (totalBytes === 0) {
+    return { body: undefined, tooLarge: false };
+  }
+
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { body: merged, tooLarge: false };
 }
 
 async function fetchUpstream(
@@ -66,8 +136,13 @@ async function handleProxy(
   context: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {
   const { path } = await context.params;
-  const baseUrl = resolveBackendBaseUrl();
   const subPath = path.join("/");
+
+  if (!isAllowedProxyPath(path, subPath)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const baseUrl = resolveBackendBaseUrl();
   const search = req.nextUrl.search || "";
 
   const headers = new Headers();
@@ -86,9 +161,23 @@ async function handleProxy(
 
   let body: BodyInit | undefined = undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {
-    const buffer = await req.arrayBuffer();
-    if (buffer.byteLength > 0) {
-      body = buffer;
+    const maxBytes =
+      subPath === "api/v1/cards/extract-from-photo"
+        ? MAX_PHOTO_BYTES
+        : MAX_DEFAULT_BYTES;
+
+    const bounded = await readBoundedBody(req, maxBytes);
+    if (bounded.tooLarge) {
+      return NextResponse.json(
+        { error: "Request payload too large" },
+        { status: 413 }
+      );
+    }
+    if (bounded.body) {
+      body = bounded.body.buffer.slice(
+        bounded.body.byteOffset,
+        bounded.body.byteOffset + bounded.body.byteLength
+      ) as ArrayBuffer;
     }
   }
 
