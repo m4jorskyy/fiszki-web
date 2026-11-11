@@ -191,6 +191,21 @@ async function handleProxy(
     headers.set("Accept", accept);
   }
 
+  // Forward client HttpOnly cookies (access_token, refresh_token) to fiszki-server
+  const cookie = req.headers.get("cookie");
+  if (cookie) {
+    headers.set("Cookie", cookie);
+  }
+
+  // Forward host and forwarded headers so fiszki-server knows domain and TLS status
+  const clientHost = req.headers.get("host") || "nihaowu.pl";
+  headers.set("Host", clientHost);
+  const proto =
+    req.headers.get("x-forwarded-proto") ||
+    (req.nextUrl.protocol.startsWith("https") ? "https" : "http");
+  headers.set("X-Forwarded-Proto", proto);
+  headers.set("X-Forwarded-Host", clientHost);
+
   let body: BodyInit | undefined = undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {
     const maxBytes =
@@ -234,6 +249,22 @@ async function handleProxy(
     }
     responseHeaders.set("x-fiszki-target", usedBaseUrl);
     responseHeaders.set("x-fiszki-latency-ms", String(latencyMs));
+
+    // Forward all Set-Cookie headers from upstream (HttpOnly access_token & refresh_token)
+    const setCookies =
+      typeof upstream.headers.getSetCookie === "function"
+        ? upstream.headers.getSetCookie()
+        : [];
+    if (setCookies.length > 0) {
+      for (const sc of setCookies) {
+        responseHeaders.append("set-cookie", sc);
+      }
+    } else {
+      const single = upstream.headers.get("set-cookie");
+      if (single) {
+        responseHeaders.set("set-cookie", single);
+      }
+    }
 
     if (upstream.status === 204) {
       return new NextResponse(null, {

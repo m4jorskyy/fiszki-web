@@ -127,12 +127,31 @@ export default function FiszkiWorkspacePage() {
     const existingSession = getStoredSession();
     if (existingSession) {
       setSession(existingSession);
+      setHydrated(true);
     }
 
-    setHydrated(true);
+    // Verify / restore session via HttpOnly cookies
+    void fiszkiApi
+      .getMe()
+      .then((me) => {
+        setSession((prev) => ({
+          user: me,
+          accessToken: prev?.accessToken || "",
+          expiresAt: prev?.expiresAt || "",
+          refreshToken: prev?.refreshToken || "",
+        }));
+      })
+      .catch(() => {
+        if (!existingSession) {
+          setSession(null);
+        }
+      })
+      .finally(() => {
+        setHydrated(true);
+      });
   }, []);
 
-  const isAuthenticated = Boolean(session?.accessToken);
+  const isAuthenticated = Boolean(session?.user);
 
   useEffect(() => {
     if (hydrated && isAuthenticated) {
