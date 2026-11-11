@@ -18,9 +18,9 @@ const STORAGE_KEYS = {
 
 export interface StoredSession {
   user: User;
-  accessToken: string;
-  expiresAt: string;
-  refreshToken: string;
+  accessToken?: string;
+  expiresAt?: string;
+  refreshToken?: string;
 }
 
 export class ApiError extends Error {
@@ -43,12 +43,14 @@ export function getStoredSession(): StoredSession | null {
   }
 }
 
-export function saveStoredSession(resp: AuthTokensResponse): StoredSession {
+export function saveStoredSession(
+  resp: AuthTokensResponse | { user: User; access_token?: string; expires_at?: string; refresh_token?: string }
+): StoredSession {
   const session: StoredSession = {
     user: resp.user,
-    accessToken: resp.access_token,
-    expiresAt: resp.expires_at,
-    refreshToken: resp.refresh_token,
+    accessToken: resp.access_token || undefined,
+    expiresAt: resp.expires_at || undefined,
+    refreshToken: resp.refresh_token || undefined,
   };
   if (typeof window !== "undefined") {
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(session));
@@ -61,23 +63,26 @@ export function clearStoredSession(): void {
   localStorage.removeItem(STORAGE_KEYS.AUTH);
 }
 
-// Single-flight lock for refresh token rotation (ConsumeRefreshToken is one-time use in fiszki-server)
+// Single-flight lock for refresh token rotation
 let inflightRefresh: Promise<StoredSession | null> | null = null;
 
 async function performTokenRefresh(): Promise<StoredSession | null> {
   if (inflightRefresh) return inflightRefresh;
 
-  const current = getStoredSession();
-  if (!current?.refreshToken) return null;
-
   inflightRefresh = (async () => {
     try {
+      const current = getStoredSession();
+      // With HttpOnly cookies, browser attaches `Cookie: refresh_token=...` automatically.
+      // Also send JSON body if available in storage for maximum compatibility.
+      const body = current?.refreshToken
+        ? JSON.stringify({ refresh_token: current.refreshToken })
+        : undefined;
+
       const res = await fetch("/api/proxy/api/v1/auth/refresh", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ refresh_token: current.refreshToken }),
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body,
+        credentials: "same-origin",
       });
 
       if (!res.ok) {
@@ -99,14 +104,16 @@ async function performTokenRefresh(): Promise<StoredSession | null> {
 
 async function getValidAccessToken(): Promise<string | null> {
   const session = getStoredSession();
-  if (!session) return null;
+  if (!session || !session.accessToken) return null;
 
-  const expiresMs = new Date(session.expiresAt).getTime();
-  const nowMs = Date.now();
-  // Refresh proactively if within 45 seconds of expiration
-  if (!Number.isNaN(expiresMs) && expiresMs - nowMs < 45_000) {
-    const refreshed = await performTokenRefresh();
-    return refreshed?.accessToken ?? null;
+  if (session.expiresAt) {
+    const expiresMs = new Date(session.expiresAt).getTime();
+    const nowMs = Date.now();
+    // Refresh proactively if within 45 seconds of expiration
+    if (!Number.isNaN(expiresMs) && expiresMs - nowMs < 45_000) {
+      const refreshed = await performTokenRefresh();
+      return refreshed?.accessToken ?? null;
+    }
   }
   return session.accessToken;
 }
@@ -120,25 +127,29 @@ async function request<T>(
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  if (requireAuth) {
-    const token = await getValidAccessToken();
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
+  // If we have an access token in storage, attach it as fallback;
+  // otherwise, HttpOnly cookie `access_token` is sent automatically via credentials: "same-origin"
+  const token = await getValidAccessToken();
+  if (token && requireAuth) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   let res = await fetch(`/api/proxy${path}`, {
     ...options,
     headers,
+    credentials: "same-origin",
   });
 
   if (res.status === 401 && requireAuth) {
     const refreshed = await performTokenRefresh();
-    if (refreshed?.accessToken) {
-      headers["Authorization"] = `Bearer ${refreshed.accessToken}`;
+    if (refreshed) {
+      if (refreshed.accessToken) {
+        headers["Authorization"] = `Bearer ${refreshed.accessToken}`;
+      }
       res = await fetch(`/api/proxy${path}`, {
         ...options,
         headers,
+        credentials: "same-origin",
       });
     }
   }
@@ -159,7 +170,6 @@ async function request<T>(
       }
     } else {
       const text = (await res.text()).trim();
-      // Never dump HTML error pages (e.g. Cloudflare 502) into the UI
       const looksLikeHtml = /^<!doctype|^<html|<\/html>/i.test(text);
       if (looksLikeHtml) {
         errMsg = `HTTP ${res.status} — server unavailable, try again in a moment`;
@@ -177,7 +187,7 @@ async function request<T>(
 }
 
 export const fiszkiApi = {
-  // 1. Auth: POST /api/v1/auth/register
+  // 1. Auth: POST /api/v1/auth/register (sets HttpOnly cookies)
   async register(email: string, password: string): Promise<StoredSession> {
     const resp = await request<AuthTokensResponse>(
       "/api/v1/auth/register",
@@ -191,7 +201,7 @@ export const fiszkiApi = {
     return saveStoredSession(resp);
   },
 
-  // 2. Auth: POST /api/v1/auth/login
+  // 2. Auth: POST /api/v1/auth/login (sets HttpOnly cookies)
   async login(email: string, password: string): Promise<StoredSession> {
     const resp = await request<AuthTokensResponse>(
       "/api/v1/auth/login",
@@ -205,32 +215,31 @@ export const fiszkiApi = {
     return saveStoredSession(resp);
   },
 
-  // 3. Auth: POST /api/v1/auth/refresh
+  // 3. Auth: POST /api/v1/auth/refresh (uses HttpOnly refresh_token cookie)
   async refresh(): Promise<StoredSession | null> {
     return performTokenRefresh();
   },
 
-  // 4. Auth: POST /api/v1/auth/logout
+  // 4. Auth: POST /api/v1/auth/logout (clears HttpOnly cookies)
   async logout(): Promise<void> {
     const session = getStoredSession();
     try {
-      if (session?.refreshToken) {
-        await request<void>(
-          "/api/v1/auth/logout",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refresh_token: session.refreshToken }),
-          },
-          false
-        );
-      }
+      const body = session?.refreshToken
+        ? JSON.stringify({ refresh_token: session.refreshToken })
+        : undefined;
+
+      await fetch("/api/proxy/api/v1/auth/logout", {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body,
+        credentials: "same-origin",
+      });
     } finally {
       clearStoredSession();
     }
   },
 
-  // 5. Auth: GET /api/v1/auth/me
+  // 5. Auth: GET /api/v1/auth/me (authenticated via HttpOnly access_token cookie)
   async getMe(): Promise<User> {
     return request<User>("/api/v1/auth/me");
   },
@@ -292,6 +301,7 @@ export const fiszkiApi = {
       {
         method: "GET",
         headers,
+        credentials: "same-origin",
       }
     );
 
