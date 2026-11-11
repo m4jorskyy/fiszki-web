@@ -105,3 +105,15 @@ if (-not $healthy) {
 }
 
 Write-Host "$ServiceName ($EnvName -> $ApiUrl) is up and healthy on port $Port!"
+
+# Verify the Web UI -> fiszki-server proxy path (does not fail the deploy, only warns)
+try {
+    $apiHealth = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/proxy/healthz" -TimeoutSec 5
+    if ($apiHealth.status -eq "ok") {
+        Write-Host "Proxy check OK: http://127.0.0.1:$Port/api/proxy/healthz -> $ApiUrl (status=ok)"
+    } else {
+        Write-Warning "Proxy reached fiszki-server at $ApiUrl but status='$($apiHealth.status)'"
+    }
+} catch {
+    Write-Warning "Proxy check FAILED: fiszki-web cannot reach fiszki-server at $ApiUrl ($($_.Exception.Message)). Is the fiszki-server service running?"
+}
