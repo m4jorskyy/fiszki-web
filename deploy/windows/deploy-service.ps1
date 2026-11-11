@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory=$true)][string]$DeployDir,
     [Parameter(Mandatory=$true)][string]$Port,
     [Parameter(Mandatory=$false)][string]$EnvName = "prod",
-    [Parameter(Mandatory=$false)][string]$ApiUrl = "http://localhost:8080"
+    [Parameter(Mandatory=$false)][string]$ApiUrl = "http://127.0.0.1:8080"
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,15 +33,17 @@ if (Test-Path ".\public") {
     Copy-Item -Path ".\public\*" -Destination $publicDest -Recurse -Force
 }
 
+$normalizedApiUrl = $ApiUrl.Replace("://localhost:", "://127.0.0.1:")
+
 $envLines = @(
     "NODE_ENV=production",
     "HOSTNAME=0.0.0.0",
     "PORT=$Port",
     "ENV_NAME=$EnvName",
     "NEXT_PUBLIC_DEFAULT_ENV=$EnvName",
-    "FISZKI_API_URL=$ApiUrl",
-    "FISZKI_PROD_API_URL=http://localhost:8080",
-    "FISZKI_STAGING_API_URL=http://localhost:8081"
+    "FISZKI_API_URL=$normalizedApiUrl",
+    "FISZKI_PROD_API_URL=http://127.0.0.1:8080",
+    "FISZKI_STAGING_API_URL=http://127.0.0.1:8081"
 )
 Set-Content -Path (Join-Path $DeployDir ".env") -Value $envLines -Encoding Ascii
 
@@ -58,26 +60,20 @@ if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) {
 }
 
 if (Get-Command nssm -ErrorAction SilentlyContinue) {
-    nssm set $ServiceName AppEnvironmentExtra `
-        "NODE_ENV=production" `
-        "HOSTNAME=0.0.0.0" `
-        "PORT=$Port" `
-        "ENV_NAME=$EnvName" `
-        "NEXT_PUBLIC_DEFAULT_ENV=$EnvName" `
-        "FISZKI_API_URL=$ApiUrl" `
-        "FISZKI_PROD_API_URL=http://localhost:8080" `
-        "FISZKI_STAGING_API_URL=http://localhost:8081" | Out-Null
+    # NSSM requires environment variables separated by newlines
+    $envString = $envLines -join "`n"
+    nssm set $ServiceName AppEnvironmentExtra $envString | Out-Null
 }
 
 Write-Host "Starting Windows Service $ServiceName..."
 Start-Service -Name $ServiceName
 
-Write-Host "Waiting for health check on http://localhost:$Port ..."
+Write-Host "Waiting for health check on http://127.0.0.1:$Port ..."
 $healthy = $false
 for ($i = 1; $i -le 15; $i++) {
     Start-Sleep -Seconds 2
     try {
-        $resp = Invoke-WebRequest -Uri "http://localhost:$Port" -UseBasicParsing -TimeoutSec 3
+        $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$Port" -UseBasicParsing -TimeoutSec 3
         if ($resp.StatusCode -eq 200) {
             $healthy = $true
             break
@@ -104,16 +100,16 @@ if (-not $healthy) {
     exit 1
 }
 
-Write-Host "$ServiceName ($EnvName -> $ApiUrl) is up and healthy on port $Port!"
+Write-Host "$ServiceName ($EnvName -> $normalizedApiUrl) is up and healthy on port $Port!"
 
-# Verify the Web UI -> fiszki-server proxy path (does not fail the deploy, only warns)
+# Verify the Web UI -> fiszki-server proxy path
 try {
     $apiHealth = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/proxy/healthz" -TimeoutSec 5
     if ($apiHealth.status -eq "ok") {
-        Write-Host "Proxy check OK: http://127.0.0.1:$Port/api/proxy/healthz -> $ApiUrl (status=ok)"
+        Write-Host "Proxy check OK: http://127.0.0.1:$Port/api/proxy/healthz -> $normalizedApiUrl (status=ok)"
     } else {
-        Write-Warning "Proxy reached fiszki-server at $ApiUrl but status='$($apiHealth.status)'"
+        Write-Warning "Proxy reached fiszki-server at $normalizedApiUrl but status='$($apiHealth.status)'"
     }
 } catch {
-    Write-Warning "Proxy check FAILED: fiszki-web cannot reach fiszki-server at $ApiUrl ($($_.Exception.Message)). Is the fiszki-server service running?"
+    Write-Warning "Proxy check FAILED: fiszki-web cannot reach fiszki-server at $normalizedApiUrl ($($_.Exception.Message))."
 }
