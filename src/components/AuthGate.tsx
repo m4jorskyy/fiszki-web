@@ -1,32 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import {
-  BackendConnectionConfig,
-  BackendEnv,
-  HealthStatus,
-} from "@/lib/types";
 import { fiszkiApi, StoredSession } from "@/lib/api";
 import { Locale, translations } from "@/lib/i18n";
-import {
-  Server,
-  Moon,
-  Sun,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  RefreshCw,
-} from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 
 interface AuthGateProps {
   locale: Locale;
   onToggleLocale: () => void;
   darkMode: boolean;
   onToggleDarkMode: () => void;
-  health: HealthStatus | null;
-  backendConfig: BackendConnectionConfig;
-  onUpdateBackendConfig: (cfg: BackendConnectionConfig) => void;
-  onRefreshHealth: () => void;
   onAuthenticated: (session: StoredSession) => void;
 }
 
@@ -35,10 +18,6 @@ export function AuthGate({
   onToggleLocale,
   darkMode,
   onToggleDarkMode,
-  health,
-  backendConfig,
-  onUpdateBackendConfig,
-  onRefreshHealth,
   onAuthenticated,
 }: AuthGateProps) {
   const t = translations[locale];
@@ -47,10 +26,6 @@ export function AuthGate({
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showEnvConfig, setShowEnvConfig] = useState(false);
-  const [customUrlInput, setCustomUrlInput] = useState(
-    backendConfig.customUrl || "http://localhost:8080"
-  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -69,14 +44,6 @@ export function AuthGate({
     } finally {
       setLoading(false);
     }
-  }
-
-  function handleSelectEnv(env: BackendEnv) {
-    const nextCfg: BackendConnectionConfig = {
-      env,
-      customUrl: env === "custom" ? customUrlInput.trim() : undefined,
-    };
-    onUpdateBackendConfig(nextCfg);
   }
 
   return (
@@ -100,30 +67,8 @@ export function AuthGate({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setShowEnvConfig((v) => !v)}
-            className="min-h-[38px] px-2.5 py-1.5 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-xs font-mono-tabular flex items-center gap-1.5 text-[var(--ink-secondary)] hover:border-[var(--border-strong)]"
-            title={t.env.configureTitle}
-          >
-            {health?.status === "ok" ? (
-              <CheckCircle2 className="w-3.5 h-3.5 text-[var(--stamp-verdigris)] shrink-0" />
-            ) : health?.status === "db_unreachable" ? (
-              <AlertTriangle className="w-3.5 h-3.5 text-[var(--amber-hard)] shrink-0" />
-            ) : (
-              <XCircle className="w-3.5 h-3.5 text-[var(--rule-crimson)] shrink-0" />
-            )}
-            <span>
-              {backendConfig.env === "prod"
-                ? "PROD"
-                : backendConfig.env === "staging"
-                  ? "STAGING"
-                  : "CUSTOM"}
-            </span>
-          </button>
-
-          <button
-            type="button"
             onClick={onToggleLocale}
-            className="min-h-[38px]  px-2.5 py-1.5 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-xs font-semibold text-[var(--ink-primary)]"
+            className="min-h-[38px] px-2.5 py-1.5 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-xs font-semibold text-[var(--ink-primary)] cursor-pointer"
           >
             {locale === "pl" ? "PL / EN" : "EN / PL"}
           </button>
@@ -131,7 +76,7 @@ export function AuthGate({
           <button
             type="button"
             onClick={onToggleDarkMode}
-            className="min-h-[38px] min-w-[38px] p-2 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-[var(--ink-primary)] flex items-center justify-center"
+            className="min-h-[38px] min-w-[38px] p-2 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-[var(--ink-primary)] flex items-center justify-center cursor-pointer"
             aria-label="Toggle theme"
           >
             {darkMode ? (
@@ -145,84 +90,6 @@ export function AuthGate({
 
       {/* Main Direct Auth Gate Card */}
       <main className="w-full max-w-md mx-auto my-auto py-6">
-        {showEnvConfig && (
-          <div className="index-card p-4 mb-4 border-l-4 border-l-[var(--accent-cobalt)]">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <Server className="w-4 h-4 text-[var(--accent-cobalt)]" />
-                <span>{t.env.configureTitle}</span>
-              </div>
-              <button
-                type="button"
-                onClick={onRefreshHealth}
-                className="text-xs font-mono-tabular text-[var(--accent-cobalt)] flex items-center gap-1 hover:underline"
-              >
-                <RefreshCw className="w-3 h-3" />
-                {t.env.checkHealth}
-              </button>
-            </div>
-            <p className="text-xs text-[var(--ink-secondary)] mb-3">
-              {t.env.configureDesc}
-            </p>
-            <div className="grid grid-cols-3 gap-1.5 mb-3">
-              {(["staging", "prod", "custom"] as BackendEnv[]).map((envKey) => (
-                <button
-                  key={envKey}
-                  type="button"
-                  onClick={() => handleSelectEnv(envKey)}
-                  className={`py-2 px-2 rounded text-xs font-medium border text-center transition-colors ${
-                    backendConfig.env === envKey
-                      ? "bg-[var(--accent-cobalt)] text-white border-[var(--accent-cobalt)]"
-                      : "bg-[var(--bg-recessed)] text-[var(--ink-secondary)] border-[var(--border-paper)]"
-                  }`}
-                >
-                  {envKey === "staging"
-                    ? "Staging (:8081)"
-                    : envKey === "prod"
-                      ? "Prod (:8080)"
-                      : "Custom"}
-                </button>
-              ))}
-            </div>
-
-            {backendConfig.env === "custom" && (
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  value={customUrlInput}
-                  onChange={(e) => setCustomUrlInput(e.target.value)}
-                  placeholder="http://localhost:8080"
-                  className="flex-1 px-3 py-2 text-xs font-mono-tabular rounded border border-[var(--border-paper)] bg-[var(--bg-elevated)]"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleSelectEnv("custom")}
-                  className="px-3 py-2 text-xs font-semibold rounded bg-[var(--ink-primary)] text-[var(--bg-card)]"
-                >
-                  {t.env.saveEnv}
-                </button>
-              </div>
-            )}
-
-            {health && (
-              <div className="mt-2 pt-2 border-t border-[var(--border-paper)] flex items-center justify-between text-xs font-mono-tabular text-[var(--ink-muted)]">
-                <span className="truncate">{health.targetUrl}</span>
-                <span>
-                  {health.status === "ok"
-                    ? `${t.env.serverOnline}${
-                        health.latencyMs !== undefined
-                          ? ` (${health.latencyMs}ms)`
-                          : ""
-                      }`
-                    : health.status === "db_unreachable"
-                      ? t.env.dbUnreachable
-                      : t.env.serverOffline}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
         <div className="index-stack crimson-top-rule p-6 sm:p-8">
           <div className="mb-6">
             <h1 className="font-serif-card text-2xl sm:text-3xl font-semibold text-[var(--ink-primary)] tracking-tight">
@@ -241,7 +108,7 @@ export function AuthGate({
                 setMode("login");
                 setError(null);
               }}
-              className={`min-h-[42px] rounded text-sm font-semibold transition-colors ${
+              className={`min-h-[42px] rounded text-sm font-semibold transition-colors cursor-pointer ${
                 mode === "login"
                   ? "bg-[var(--bg-card)] text-[var(--ink-primary)] shadow-xs"
                   : "text-[var(--ink-secondary)]"
@@ -255,7 +122,7 @@ export function AuthGate({
                 setMode("register");
                 setError(null);
               }}
-              className={`min-h-[42px] rounded text-sm font-semibold transition-colors ${
+              className={`min-h-[42px] rounded text-sm font-semibold transition-colors cursor-pointer ${
                 mode === "register"
                   ? "bg-[var(--bg-card)] text-[var(--ink-primary)] shadow-xs"
                   : "text-[var(--ink-secondary)]"

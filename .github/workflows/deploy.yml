@@ -22,6 +22,7 @@ jobs:
       PORT: ${{ github.ref_name == 'main' && '3000' || '3001' }}
       DEPLOY_DIR: ${{ github.ref_name == 'main' && 'C:\fiszki-web\prod' || 'C:\fiszki-web\staging' }}
       NEXT_PUBLIC_DEFAULT_ENV: ${{ github.ref_name == 'main' && 'prod' || 'staging' }}
+      FISZKI_API_URL: ${{ github.ref_name == 'main' && 'http://localhost:8080' || 'http://localhost:8081' }}
       FISZKI_PROD_API_URL: "http://localhost:8080"
       FISZKI_STAGING_API_URL: "http://localhost:8081"
 
@@ -43,4 +44,6 @@ jobs:
           .\deploy\windows\deploy-service.ps1 `
             -ServiceName $env:SERVICE_NAME `
             -DeployDir $env:DEPLOY_DIR `
-            -Port $env:PORT
+            -Port $env:PORT `
+            -EnvName $env:ENV_NAME `
+            -ApiUrl $env:FISZKI_API_URL

@@ -1,14 +1,11 @@
 import {
   AuthTokensResponse,
-  BackendConnectionConfig,
-  BackendEnv,
   Card,
   CardFilter,
   CardInput,
   Deck,
   DueCardsFilter,
   ExtractedCardCandidate,
-  HealthStatus,
   Rating,
   ReviewLog,
   StudyStatsOverview,
@@ -17,7 +14,6 @@ import {
 
 const STORAGE_KEYS = {
   AUTH: "fiszki_auth_session_v1",
-  ENV: "fiszki_backend_env_v1",
 } as const;
 
 export interface StoredSession {
@@ -34,33 +30,6 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
   }
-}
-
-export function getBackendConfig(): BackendConnectionConfig {
-  if (typeof window === "undefined") {
-    return {
-      env:
-        (process.env.NEXT_PUBLIC_DEFAULT_ENV as BackendEnv) || "prod",
-    };
-  }
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.ENV);
-    if (raw) {
-      const parsed = JSON.parse(raw) as BackendConnectionConfig;
-      if (parsed.env) return parsed;
-    }
-  } catch {
-    // ignore storage errors
-  }
-  return {
-    env:
-      (process.env.NEXT_PUBLIC_DEFAULT_ENV as BackendEnv) || "prod",
-  };
-}
-
-export function setBackendConfig(config: BackendConnectionConfig): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEYS.ENV, JSON.stringify(config));
 }
 
 export function getStoredSession(): StoredSession | null {
@@ -92,17 +61,6 @@ export function clearStoredSession(): void {
   localStorage.removeItem(STORAGE_KEYS.AUTH);
 }
 
-function buildEnvHeaders(): Record<string, string> {
-  const cfg = getBackendConfig();
-  const headers: Record<string, string> = {
-    "x-fiszki-env": cfg.env,
-  };
-  if (cfg.env === "custom" && cfg.customUrl) {
-    headers["x-fiszki-custom-url"] = cfg.customUrl;
-  }
-  return headers;
-}
-
 // Single-flight lock for refresh token rotation (ConsumeRefreshToken is one-time use in fiszki-server)
 let inflightRefresh: Promise<StoredSession | null> | null = null;
 
@@ -118,7 +76,6 @@ async function performTokenRefresh(): Promise<StoredSession | null> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...buildEnvHeaders(),
         },
         body: JSON.stringify({ refresh_token: current.refreshToken }),
       });
@@ -160,7 +117,6 @@ async function request<T>(
   requireAuth = true
 ): Promise<T> {
   const headers: Record<string, string> = {
-    ...buildEnvHeaders(),
     ...(options.headers as Record<string, string> | undefined),
   };
 
@@ -215,70 +171,7 @@ async function request<T>(
 }
 
 export const fiszkiApi = {
-  // 1. Health check: GET /healthz
-  async checkHealth(): Promise<HealthStatus> {
-    const cfg = getBackendConfig();
-    try {
-      const res = await fetch("/api/proxy/healthz", {
-        method: "GET",
-        headers: buildEnvHeaders(),
-        cache: "no-store",
-      });
-      const targetUrl =
-        res.headers.get("x-fiszki-target") ||
-        (cfg.env === "prod"
-          ? "http://localhost:8080"
-          : "http://localhost:8081");
-      const latencyRaw = res.headers.get("x-fiszki-latency-ms");
-      const latencyMs = latencyRaw ? Number(latencyRaw) : undefined;
-
-      if (res.ok) {
-        const data = (await res.json()) as { status?: string };
-        if (data.status === "ok") {
-          return {
-            status: "ok",
-            env: cfg.env,
-            targetUrl,
-            latencyMs,
-          };
-        }
-        if (data.status === "db_unreachable") {
-          return {
-            status: "db_unreachable",
-            env: cfg.env,
-            targetUrl,
-            latencyMs,
-          };
-        }
-        return {
-          status: "unreachable",
-          env: cfg.env,
-          targetUrl,
-        };
-      }
-      if (res.status === 503) {
-        return {
-          status: "db_unreachable",
-          env: cfg.env,
-          targetUrl,
-          latencyMs,
-        };
-      }
-      return {
-        status: "unreachable",
-        env: cfg.env,
-        targetUrl,
-      };
-    } catch {
-      return {
-        status: "unreachable",
-        env: cfg.env,
-        targetUrl: cfg.customUrl || cfg.env,
-      };
-    }
-  },
-
-  // 2. Auth: POST /api/v1/auth/register
+  // 1. Auth: POST /api/v1/auth/register
   async register(email: string, password: string): Promise<StoredSession> {
     const resp = await request<AuthTokensResponse>(
       "/api/v1/auth/register",
@@ -292,7 +185,7 @@ export const fiszkiApi = {
     return saveStoredSession(resp);
   },
 
-  // 3. Auth: POST /api/v1/auth/login
+  // 2. Auth: POST /api/v1/auth/login
   async login(email: string, password: string): Promise<StoredSession> {
     const resp = await request<AuthTokensResponse>(
       "/api/v1/auth/login",
@@ -306,12 +199,12 @@ export const fiszkiApi = {
     return saveStoredSession(resp);
   },
 
-  // 4. Auth: POST /api/v1/auth/refresh
+  // 3. Auth: POST /api/v1/auth/refresh
   async refresh(): Promise<StoredSession | null> {
     return performTokenRefresh();
   },
 
-  // 5. Auth: POST /api/v1/auth/logout
+  // 4. Auth: POST /api/v1/auth/logout
   async logout(): Promise<void> {
     const session = getStoredSession();
     try {
@@ -331,18 +224,18 @@ export const fiszkiApi = {
     }
   },
 
-  // 6. Auth: GET /api/v1/auth/me
+  // 5. Auth: GET /api/v1/auth/me
   async getMe(): Promise<User> {
     return request<User>("/api/v1/auth/me");
   },
 
-  // 7. Decks: GET /api/v1/decks
+  // 6. Decks: GET /api/v1/decks
   async listDecks(): Promise<Deck[]> {
     const res = await request<{ decks: Deck[] | null }>("/api/v1/decks");
     return res.decks ?? [];
   },
 
-  // 8. Decks: POST /api/v1/decks
+  // 7. Decks: POST /api/v1/decks
   async createDeck(name: string, description: string): Promise<Deck> {
     return request<Deck>("/api/v1/decks", {
       method: "POST",
@@ -351,12 +244,12 @@ export const fiszkiApi = {
     });
   },
 
-  // 9. Decks: GET /api/v1/decks/{deckID}
+  // 8. Decks: GET /api/v1/decks/{deckID}
   async getDeck(deckID: string): Promise<Deck> {
     return request<Deck>(`/api/v1/decks/${encodeURIComponent(deckID)}`);
   },
 
-  // 10. Decks: PUT /api/v1/decks/{deckID}
+  // 9. Decks: PUT /api/v1/decks/{deckID}
   async updateDeck(
     deckID: string,
     name: string,
@@ -369,23 +262,21 @@ export const fiszkiApi = {
     });
   },
 
-  // 11. Decks: DELETE /api/v1/decks/{deckID}
+  // 10. Decks: DELETE /api/v1/decks/{deckID}
   async deleteDeck(deckID: string): Promise<void> {
     return request<void>(`/api/v1/decks/${encodeURIComponent(deckID)}`, {
       method: "DELETE",
     });
   },
 
-  // 12. Decks: GET /api/v1/decks/{deckID}/export?format=csv|json
+  // 11. Decks: GET /api/v1/decks/{deckID}/export?format=csv|json
   async exportDeck(
     deckID: string,
     deckName: string,
     format: "csv" | "json"
   ): Promise<void> {
     const token = await getValidAccessToken();
-    const headers: Record<string, string> = {
-      ...buildEnvHeaders(),
-    };
+    const headers: Record<string, string> = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
@@ -419,7 +310,7 @@ export const fiszkiApi = {
     URL.revokeObjectURL(url);
   },
 
-  // 13. Decks: POST /api/v1/decks/{deckID}/import?format=csv|json
+  // 12. Decks: POST /api/v1/decks/{deckID}/import?format=csv|json
   async importDeck(
     deckID: string,
     format: "csv" | "json",
@@ -437,7 +328,7 @@ export const fiszkiApi = {
     );
   },
 
-  // 14. Cards: GET /api/v1/decks/{deckID}/cards
+  // 13. Cards: GET /api/v1/decks/{deckID}/cards
   async listCards(deckID: string, filter: CardFilter = {}): Promise<Card[]> {
     const params = new URLSearchParams();
     if (filter.q) params.set("q", filter.q);
@@ -451,7 +342,7 @@ export const fiszkiApi = {
     return res.cards ?? [];
   },
 
-  // 15. Cards: POST /api/v1/decks/{deckID}/cards
+  // 14. Cards: POST /api/v1/decks/{deckID}/cards
   async createCard(deckID: string, input: CardInput): Promise<Card> {
     return request<Card>(
       `/api/v1/decks/${encodeURIComponent(deckID)}/cards`,
@@ -463,7 +354,7 @@ export const fiszkiApi = {
     );
   },
 
-  // 16. Cards: POST /api/v1/decks/{deckID}/cards/bulk
+  // 15. Cards: POST /api/v1/decks/{deckID}/cards/bulk
   async bulkCreateCards(
     deckID: string,
     cards: CardInput[]
@@ -478,7 +369,7 @@ export const fiszkiApi = {
     );
   },
 
-  // 17. Cards: POST /api/v1/cards/extract-from-photo
+  // 16. Cards: POST /api/v1/cards/extract-from-photo
   async extractFromPhoto(
     file: File
   ): Promise<{ count: number; cards: ExtractedCardCandidate[] }> {
@@ -499,12 +390,12 @@ export const fiszkiApi = {
     };
   },
 
-  // 18. Cards: GET /api/v1/cards/{cardID}
+  // 17. Cards: GET /api/v1/cards/{cardID}
   async getCard(cardID: string): Promise<Card> {
     return request<Card>(`/api/v1/cards/${encodeURIComponent(cardID)}`);
   },
 
-  // 19. Cards: PUT /api/v1/cards/{cardID}
+  // 18. Cards: PUT /api/v1/cards/{cardID}
   async updateCard(cardID: string, input: CardInput): Promise<Card> {
     return request<Card>(`/api/v1/cards/${encodeURIComponent(cardID)}`, {
       method: "PUT",
@@ -513,14 +404,14 @@ export const fiszkiApi = {
     });
   },
 
-  // 20. Cards: DELETE /api/v1/cards/{cardID}
+  // 19. Cards: DELETE /api/v1/cards/{cardID}
   async deleteCard(cardID: string): Promise<void> {
     return request<void>(`/api/v1/cards/${encodeURIComponent(cardID)}`, {
       method: "DELETE",
     });
   },
 
-  // 21. Study: GET /api/v1/study/due
+  // 20. Study: GET /api/v1/study/due
   async getDueCards(
     filter: DueCardsFilter = {}
   ): Promise<{ count: number; cards: Card[] }> {
@@ -539,7 +430,7 @@ export const fiszkiApi = {
     };
   },
 
-  // 22. Study: POST /api/v1/study/cards/{cardID}/review
+  // 21. Study: POST /api/v1/study/cards/{cardID}/review
   async submitReview(
     cardID: string,
     rating: Rating
@@ -554,7 +445,7 @@ export const fiszkiApi = {
     );
   },
 
-  // 23. Stats: GET /api/v1/stats/overview
+  // 22. Stats: GET /api/v1/stats/overview
   async getStatsOverview(): Promise<StudyStatsOverview> {
     return request<StudyStatsOverview>("/api/v1/stats/overview");
   },

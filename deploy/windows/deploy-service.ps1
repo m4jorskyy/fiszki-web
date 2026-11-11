@@ -1,7 +1,9 @@
 param(
     [Parameter(Mandatory=$true)][string]$ServiceName,
     [Parameter(Mandatory=$true)][string]$DeployDir,
-    [Parameter(Mandatory=$true)][string]$Port
+    [Parameter(Mandatory=$true)][string]$Port,
+    [Parameter(Mandatory=$false)][string]$EnvName = "prod",
+    [Parameter(Mandatory=$false)][string]$ApiUrl = "http://localhost:8080"
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,10 +11,14 @@ $ErrorActionPreference = "Stop"
 Write-Host "Stopping service $ServiceName if running..."
 if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
     Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 3
 }
 
+$logDir   = Join-Path $DeployDir "logs"
+$serverJs = Join-Path $DeployDir "server.js"
+
 New-Item -ItemType Directory -Force -Path $DeployDir | Out-Null
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 Write-Host "Copying Next.js standalone build to $DeployDir ..."
 Copy-Item -Path ".\.next\standalone\*" -Destination $DeployDir -Recurse -Force
@@ -27,13 +33,44 @@ if (Test-Path ".\public") {
     Copy-Item -Path ".\public\*" -Destination $publicDest -Recurse -Force
 }
 
-if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-    Write-Host "Starting Windows Service $ServiceName..."
-    Start-Service -Name $ServiceName
-} else {
-    Write-Warning "Windows Service '$ServiceName' is not registered yet. Run .\deploy\windows\setup-laptop.ps1 as Administrator once on the laptop."
-    exit 1
+$envLines = @(
+    "NODE_ENV=production",
+    "HOSTNAME=0.0.0.0",
+    "PORT=$Port",
+    "ENV_NAME=$EnvName",
+    "NEXT_PUBLIC_DEFAULT_ENV=$EnvName",
+    "FISZKI_API_URL=$ApiUrl",
+    "FISZKI_PROD_API_URL=http://localhost:8080",
+    "FISZKI_STAGING_API_URL=http://localhost:8081"
+)
+Set-Content -Path (Join-Path $DeployDir ".env") -Value $envLines -Encoding Ascii
+
+if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) {
+    Write-Host "Service $ServiceName not registered yet. Auto-registering via NSSM..."
+    $nodePath = (Get-Command node -ErrorAction Stop).Source
+    nssm install $ServiceName $nodePath $serverJs
+    nssm set $ServiceName AppDirectory $DeployDir
+    nssm set $ServiceName Start SERVICE_AUTO_START
+    nssm set $ServiceName AppStdout (Join-Path $logDir "stdout.log")
+    nssm set $ServiceName AppStderr (Join-Path $logDir "stderr.log")
+    nssm set $ServiceName AppRotateFiles 1
+    nssm set $ServiceName AppRotateBytes 10485760
 }
+
+if (Get-Command nssm -ErrorAction SilentlyContinue) {
+    nssm set $ServiceName AppEnvironmentExtra `
+        "NODE_ENV=production" `
+        "HOSTNAME=0.0.0.0" `
+        "PORT=$Port" `
+        "ENV_NAME=$EnvName" `
+        "NEXT_PUBLIC_DEFAULT_ENV=$EnvName" `
+        "FISZKI_API_URL=$ApiUrl" `
+        "FISZKI_PROD_API_URL=http://localhost:8080" `
+        "FISZKI_STAGING_API_URL=http://localhost:8081" | Out-Null
+}
+
+Write-Host "Starting Windows Service $ServiceName..."
+Start-Service -Name $ServiceName
 
 Write-Host "Waiting for health check on http://localhost:$Port ..."
 $healthy = $false
@@ -67,4 +104,4 @@ if (-not $healthy) {
     exit 1
 }
 
-Write-Host "$ServiceName is up and healthy on port $Port!"
+Write-Host "$ServiceName ($EnvName -> $ApiUrl) is up and healthy on port $Port!"
