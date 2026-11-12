@@ -1,27 +1,22 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Deck, ExtractedCardCandidate } from "@/lib/types";
-import { fiszkiApi } from "@/lib/api";
-import { Locale, translations } from "@/lib/i18n";
+import React, { useRef } from "react";
 import {
-  Camera,
-  Upload,
   ArrowLeftRight,
-  Plus,
-  Trash2,
+  Camera,
   Check,
-  Sparkles,
   Image as ImageIcon,
+  Plus,
+  Sparkles,
+  Upload,
 } from "lucide-react";
-
-interface EditableCandidate extends ExtractedCardCandidate {
-  id: string;
-  selected: boolean;
-}
+import type { Deck } from "@/types";
+import { usePreferences } from "@/context/PreferencesContext";
+import { usePhotoScan } from "@/hooks/usePhotoScan";
+import { Alert } from "@/components/ui/Alert";
+import { CandidateCardItem } from "./CandidateCardItem";
 
 interface PhotoScanWorkbenchProps {
-  locale: Locale;
   decks: Deck[];
   defaultDeckId?: string;
   onCardsSaved: (deckId: string, count: number) => void;
@@ -29,160 +24,44 @@ interface PhotoScanWorkbenchProps {
 }
 
 export function PhotoScanWorkbench({
-  locale,
   decks,
   defaultDeckId,
   onCardsSaved,
   onDeckCreated,
 }: PhotoScanWorkbenchProps) {
-  const t = translations[locale];
+  const { t } = usePreferences();
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [targetDeckId, setTargetDeckId] = useState<string>(
-    defaultDeckId || decks[0]?.id || "__new__"
-  );
-  const [newDeckName, setNewDeckName] = useState<string>("");
-  const [batchTags, setBatchTags] = useState<string>("");
-
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [extracting, setExtracting] = useState<boolean>(false);
-  const [saving, setSaving] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [candidates, setCandidates] = useState<EditableCandidate[]>([]);
-  const [hasExtractedOnce, setHasExtractedOnce] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (defaultDeckId) {
-      setTargetDeckId(defaultDeckId);
-    } else if (decks.length > 0 && targetDeckId === "__new__") {
-      setTargetDeckId(decks[0].id);
-    }
-  }, [defaultDeckId, decks, targetDeckId]);
-
-  const processImageFile = useCallback(async (file: File) => {
-    setError(null);
-    setExtracting(true);
-    setHasExtractedOnce(true);
-
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return objectUrl;
-    });
-
-    try {
-      const res = await fiszkiApi.extractFromPhoto(file);
-      const mapped: EditableCandidate[] = res.cards.map((c, idx) => ({
-        id: `${Date.now()}-${idx}`,
-        front: c.front,
-        back: c.back,
-        selected: true,
-      }));
-      setCandidates(mapped);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to extract cards from photo"
-      );
-    } finally {
-      setExtracting(false);
-    }
-  }, []);
-
-  // Support global clipboard image paste (Cmd+V / Ctrl+V)
-  useEffect(() => {
-    function handlePaste(e: ClipboardEvent) {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (const item of Array.from(items)) {
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            void processImageFile(file);
-            break;
-          }
-        }
-      }
-    }
-    window.addEventListener("paste", handlePaste);
-    return () => window.removeEventListener("paste", handlePaste);
-  }, [processImageFile]);
-
-  function handleSwapAll() {
-    setCandidates((prev) =>
-      prev.map((c) => ({
-        ...c,
-        front: c.back,
-        back: c.front,
-      }))
-    );
-  }
-
-  function handleAddEmptyRow() {
-    setCandidates((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${prev.length}`,
-        front: "",
-        back: "",
-        selected: true,
-      },
-    ]);
-  }
-
-  async function handleCommitToDeck() {
-    const validRows = candidates.filter(
-      (c) => c.selected && c.front.trim() !== "" && c.back.trim() !== ""
-    );
-    if (validRows.length === 0) return;
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      let destinationDeckId = targetDeckId;
-      if (destinationDeckId === "__new__" || !destinationDeckId) {
-        const nameToCreate =
-          newDeckName.trim() ||
-          `Skan ${new Date().toLocaleDateString(locale === "pl" ? "pl-PL" : "en-US")}`;
-        const createdDeck = await fiszkiApi.createDeck(nameToCreate, "");
-        onDeckCreated(createdDeck);
-        destinationDeckId = createdDeck.id;
-        setTargetDeckId(createdDeck.id);
-      }
-
-      const parsedTags = batchTags
-        .split(/[;,]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      const res = await fiszkiApi.bulkCreateCards(
-        destinationDeckId,
-        validRows.map((c) => ({
-          front: c.front.trim(),
-          back: c.back.trim(),
-          tags: parsedTags.length > 0 ? parsedTags : undefined,
-        }))
-      );
-
-      onCardsSaved(destinationDeckId, res.created_count);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to save extracted cards"
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const selectedCount = candidates.filter(
-    (c) => c.selected && c.front.trim() && c.back.trim()
-  ).length;
+  const {
+    targetDeckId,
+    newDeckName,
+    batchTags,
+    previewUrl,
+    extracting,
+    saving,
+    error,
+    candidates,
+    hasExtractedOnce,
+    selectedCount,
+    setTargetDeckId,
+    setNewDeckName,
+    setBatchTags,
+    processImageFile,
+    swapAllCandidates,
+    addEmptyCandidate,
+    updateCandidate,
+    removeCandidate,
+    commitToDeck,
+  } = usePhotoScan({
+    decks,
+    defaultDeckId,
+    onCardsSaved,
+    onDeckCreated,
+  });
 
   return (
     <div className="space-y-5 pb-20">
-      {/* Header */}
       <div className="index-card crimson-top-rule p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -196,7 +75,6 @@ export function PhotoScanWorkbench({
           <Sparkles className="w-6 h-6 text-[var(--accent-cobalt)] shrink-0 mt-1" />
         </div>
 
-        {/* Hidden Inputs for Camera (mobile-first capture="environment") and File Picker */}
         <input
           ref={cameraInputRef}
           type="file"
@@ -221,7 +99,6 @@ export function PhotoScanWorkbench({
           }}
         />
 
-        {/* Mobile-First Capture Actions */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
           <button
             type="button"
@@ -251,15 +128,11 @@ export function PhotoScanWorkbench({
       </div>
 
       {error && (
-        <div className="p-3.5 rounded border border-[var(--rule-crimson)] bg-[var(--rule-crimson-soft)] text-sm text-[var(--rule-crimson)] font-medium">
-          {error}
-        </div>
+        <Alert variant="error" message={error} className="p-3.5 font-medium" />
       )}
 
-      {/* Workbench Area: Photo Preview + Staging List */}
       {(previewUrl || extracting || candidates.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* Photo Preview Column */}
           {previewUrl && (
             <div className="lg:col-span-4 index-card p-3">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--ink-secondary)] mb-2">
@@ -275,7 +148,6 @@ export function PhotoScanWorkbench({
             </div>
           )}
 
-          {/* Extracted Candidates Staging Column */}
           <div
             className={`${
               previewUrl ? "lg:col-span-8" : "lg:col-span-12"
@@ -303,7 +175,7 @@ export function PhotoScanWorkbench({
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={handleSwapAll}
+                      onClick={swapAllCandidates}
                       className="min-h-[36px] px-2.5 py-1 rounded border border-[var(--border-paper)] bg-[var(--bg-elevated)] text-xs font-medium flex items-center gap-1.5"
                     >
                       <ArrowLeftRight className="w-3.5 h-3.5" />
@@ -312,7 +184,7 @@ export function PhotoScanWorkbench({
 
                     <button
                       type="button"
-                      onClick={handleAddEmptyRow}
+                      onClick={addEmptyCandidate}
                       className="min-h-[36px] px-2.5 py-1 rounded border border-[var(--border-paper)] bg-[var(--bg-elevated)] text-xs font-medium flex items-center gap-1.5"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -321,7 +193,6 @@ export function PhotoScanWorkbench({
                   </div>
                 </div>
 
-                {/* Target Deck & Batch Tags */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[var(--bg-recessed)] p-3 rounded border border-[var(--border-paper)]">
                   <div>
                     <label className="block text-xs font-medium text-[var(--ink-secondary)] mb-1">
@@ -364,7 +235,6 @@ export function PhotoScanWorkbench({
                   </div>
                 </div>
 
-                {/* Candidate Cards List */}
                 {hasExtractedOnce && candidates.length === 0 ? (
                   <p className="text-sm text-[var(--ink-secondary)] py-6 text-center">
                     {t.scan.noCandidates}
@@ -372,89 +242,13 @@ export function PhotoScanWorkbench({
                 ) : (
                   <div className="space-y-2.5 max-h-[55vh] overflow-y-auto pr-1">
                     {candidates.map((item, idx) => (
-                      <div
+                      <CandidateCardItem
                         key={item.id}
-                        className={`p-3 rounded border transition-colors ${
-                          item.selected
-                            ? "border-[var(--border-paper)] bg-[var(--bg-elevated)]"
-                            : "border-dashed border-[var(--border-paper)] bg-[var(--bg-recessed)] opacity-60"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <label className="flex items-center gap-2 text-xs font-mono-tabular font-semibold cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={item.selected}
-                              onChange={(e) =>
-                                setCandidates((prev) =>
-                                  prev.map((c) =>
-                                    c.id === item.id
-                                      ? { ...c, selected: e.target.checked }
-                                      : c
-                                  )
-                                )
-                              }
-                              className="w-4 h-4 accent-[var(--accent-cobalt)]"
-                            />
-                            <span>#{idx + 1}</span>
-                          </label>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setCandidates((prev) =>
-                                prev.filter((c) => c.id !== item.id)
-                              )
-                            }
-                            className="p-1.5 text-[var(--ink-muted)] hover:text-[var(--rule-crimson)]"
-                            aria-label="Remove candidate"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          <div>
-                            <span className="block text-[11px] text-[var(--ink-muted)] mb-0.5">
-                              {t.cards.frontLabel}
-                            </span>
-                            <textarea
-                              rows={2}
-                              value={item.front}
-                              onChange={(e) =>
-                                setCandidates((prev) =>
-                                  prev.map((c) =>
-                                    c.id === item.id
-                                      ? { ...c, front: e.target.value }
-                                      : c
-                                  )
-                                )
-                              }
-                              className="w-full p-2 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-sm font-serif-card"
-                            />
-                          </div>
-
-                          <div>
-                            <span className="block text-[11px] text-[var(--ink-muted)] mb-0.5">
-                              {t.cards.backLabel}
-                            </span>
-                            <textarea
-                              rows={2}
-                              value={item.back}
-                              onChange={(e) =>
-                                setCandidates((prev) =>
-                                  prev.map((c) =>
-                                    c.id === item.id
-                                      ? { ...c, back: e.target.value }
-                                      : c
-                                  )
-                                )
-                              }
-                              className="w-full p-2 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-sm font-serif-card"
-                            />
-                          </div>
-                        </div>
-                      </div>
+                        item={item}
+                        index={idx}
+                        onUpdate={updateCandidate}
+                        onRemove={removeCandidate}
+                      />
                     ))}
                   </div>
                 )}
@@ -463,7 +257,7 @@ export function PhotoScanWorkbench({
                   <button
                     type="button"
                     disabled={saving || selectedCount === 0}
-                    onClick={() => void handleCommitToDeck()}
+                    onClick={() => void commitToDeck()}
                     className="w-full min-h-[50px] rounded bg-[var(--stamp-verdigris)] text-white font-semibold text-base flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     <Check className="w-5 h-5" />

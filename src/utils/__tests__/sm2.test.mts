@@ -1,12 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { previewSchedule, DEFAULT_EASE_FACTOR, MIN_EASE_FACTOR } from "./sm2.ts";
+import { previewSchedule, DEFAULT_EASE_FACTOR, MIN_EASE_FACTOR } from "../sm2.ts";
 import {
   RATING_AGAIN,
   RATING_EASY,
   RATING_GOOD,
   RATING_HARD,
-} from "./types.ts";
+} from "../../types/study.ts";
 
 describe("SM-2 previewSchedule parity with fiszki-server", () => {
   it("matches TestSchedule_NewToReviewLifecycle", () => {
@@ -19,13 +19,11 @@ describe("SM-2 previewSchedule parity with fiszki-server", () => {
       lapses: 0,
     };
 
-    // Step 1: Good on new card -> learning step 1 (10m)
     const res1 = previewSchedule(card, RATING_GOOD);
     assert.equal(res1.state, "learning");
     assert.equal(res1.step, 1);
     assert.equal(res1.label, "10m");
 
-    // Step 2: Good on learning step 1 -> review (1d)
     card = {
       ...card,
       state: res1.state,
@@ -37,7 +35,6 @@ describe("SM-2 previewSchedule parity with fiszki-server", () => {
     assert.equal(res2.repetitions, 1);
     assert.equal(res2.label, "1d");
 
-    // Step 3: Good on first review -> 6d
     card = {
       ...card,
       state: res2.state,
@@ -49,7 +46,6 @@ describe("SM-2 previewSchedule parity with fiszki-server", () => {
     assert.equal(res3.repetitions, 2);
     assert.equal(res3.label, "6d");
 
-    // Step 4: Good on second review -> round(6 * 2.5) = 15d
     card = {
       ...card,
       interval_days: res3.intervalDays,
@@ -60,7 +56,6 @@ describe("SM-2 previewSchedule parity with fiszki-server", () => {
     assert.equal(res4.repetitions, 3);
     assert.equal(res4.label, "15d");
 
-    // Step 5: Again on review -> relearning (10m), lapses=1, ef=2.3
     card = {
       ...card,
       interval_days: res4.intervalDays,
@@ -72,7 +67,6 @@ describe("SM-2 previewSchedule parity with fiszki-server", () => {
     assert.equal(res5.easeFactor, 2.3);
     assert.equal(res5.label, "10m");
 
-    // Step 6: Good on relearning -> review (1d)
     card = {
       ...card,
       state: res5.state,
