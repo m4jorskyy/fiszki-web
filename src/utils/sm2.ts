@@ -1,4 +1,4 @@
-import type { Card, CardState, Rating } from "./types";
+import type { Card, CardState, Rating, SchedulePreview } from "../types";
 
 const RATING_AGAIN: Rating = 1;
 const RATING_HARD: Rating = 2;
@@ -7,16 +7,6 @@ const RATING_EASY: Rating = 4;
 
 export const DEFAULT_EASE_FACTOR = 2.5;
 export const MIN_EASE_FACTOR = 1.3;
-
-export interface SchedulePreview {
-  state: CardState;
-  step: number;
-  intervalDays: number;
-  easeFactor: number;
-  repetitions: number;
-  lapses: number;
-  label: string;
-}
 
 /**
  * Exact TypeScript port of fiszki-server/internal/srs/sm2.go Schedule()

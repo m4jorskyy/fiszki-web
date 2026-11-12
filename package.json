@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/lib/sm2.test.mts"
+    "test": "node --test src/utils/__tests__/*.test.mts"
   },
   "dependencies": {
     "lucide-react": "^0.475.0",

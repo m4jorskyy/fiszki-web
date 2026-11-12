@@ -1,94 +1,33 @@
 "use client";
 
-import React, { useState } from "react";
-import { fiszkiApi, StoredSession } from "@/lib/api";
-import { Locale, translations } from "@/lib/i18n";
-import { Moon, Sun } from "lucide-react";
+import React from "react";
+import { usePreferences } from "@/context/PreferencesContext";
+import { useAuthForm } from "@/hooks/useAuthForm";
+import { BrandMark } from "@/components/ui/BrandMark";
+import { ThemeLocaleControls } from "@/components/ui/ThemeLocaleControls";
+import { Alert } from "@/components/ui/Alert";
 
-interface AuthGateProps {
-  locale: Locale;
-  onToggleLocale: () => void;
-  darkMode: boolean;
-  onToggleDarkMode: () => void;
-  onAuthenticated: (session: StoredSession) => void;
-}
-
-export function AuthGate({
-  locale,
-  onToggleLocale,
-  darkMode,
-  onToggleDarkMode,
-  onAuthenticated,
-}: AuthGateProps) {
-  const t = translations[locale];
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      const session =
-        mode === "login"
-          ? await fiszkiApi.login(email.trim(), password)
-          : await fiszkiApi.register(email.trim(), password);
-      onAuthenticated(session);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Authentication request failed"
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+export function AuthGate() {
+  const { t } = usePreferences();
+  const {
+    mode,
+    email,
+    password,
+    loading,
+    error,
+    setEmail,
+    setPassword,
+    switchMode,
+    handleSubmit,
+  } = useAuthForm();
 
   return (
     <div className="min-h-dvh flex flex-col justify-between px-4 py-6 sm:px-6">
-      {/* Top Minimal Bar */}
       <header className="w-full max-w-md mx-auto flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded bg-[var(--ink-primary)] text-[var(--bg-card)] flex items-center justify-center font-serif-card font-semibold text-lg">
-            F
-          </div>
-          <div>
-            <span className="font-serif-card font-semibold text-lg tracking-tight block leading-none">
-              Fiszki
-            </span>
-            <span className="text-xs text-[var(--ink-muted)] block mt-0.5">
-              {t.brandSub}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onToggleLocale}
-            className="min-h-[38px] px-2.5 py-1.5 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-xs font-semibold text-[var(--ink-primary)] cursor-pointer"
-          >
-            {locale === "pl" ? "PL / EN" : "EN / PL"}
-          </button>
-
-          <button
-            type="button"
-            onClick={onToggleDarkMode}
-            className="min-h-[38px] min-w-[38px] p-2 rounded border border-[var(--border-paper)] bg-[var(--bg-card)] text-[var(--ink-primary)] flex items-center justify-center cursor-pointer"
-            aria-label="Toggle theme"
-          >
-            {darkMode ? (
-              <Sun className="w-4 h-4" />
-            ) : (
-              <Moon className="w-4 h-4" />
-            )}
-          </button>
-        </div>
+        <BrandMark title="Fiszki" subtitle={t.brandSub} />
+        <ThemeLocaleControls verboseLocale />
       </header>
 
-      {/* Main Direct Auth Gate Card */}
       <main className="w-full max-w-md mx-auto my-auto py-6">
         <div className="index-stack crimson-top-rule p-6 sm:p-8">
           <div className="mb-6">
@@ -100,14 +39,10 @@ export function AuthGate({
             </p>
           </div>
 
-          {/* Mode Tabs */}
           <div className="grid grid-cols-2 p-1 rounded bg-[var(--bg-recessed)] border border-[var(--border-paper)] mb-6">
             <button
               type="button"
-              onClick={() => {
-                setMode("login");
-                setError(null);
-              }}
+              onClick={() => switchMode("login")}
               className={`min-h-[42px] rounded text-sm font-semibold transition-colors cursor-pointer ${
                 mode === "login"
                   ? "bg-[var(--bg-card)] text-[var(--ink-primary)] shadow-xs"
@@ -118,10 +53,7 @@ export function AuthGate({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setMode("register");
-                setError(null);
-              }}
+              onClick={() => switchMode("register")}
               className={`min-h-[42px] rounded text-sm font-semibold transition-colors cursor-pointer ${
                 mode === "register"
                   ? "bg-[var(--bg-card)] text-[var(--ink-primary)] shadow-xs"
@@ -132,16 +64,9 @@ export function AuthGate({
             </button>
           </div>
 
-          {error && (
-            <div
-              role="alert"
-              className="mb-4 p-3 rounded border border-[var(--rule-crimson)] bg-[var(--rule-crimson-soft)] text-sm text-[var(--rule-crimson)] font-medium"
-            >
-              {error}
-            </div>
-          )}
+          {error && <Alert variant="error" message={error} className="mb-4 font-medium" />}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
             <div>
               <label
                 htmlFor="auth-email"
