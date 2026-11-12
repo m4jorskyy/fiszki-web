@@ -24,7 +24,7 @@ export function AuthGate() {
   return (
     <div className="min-h-dvh flex flex-col justify-between px-4 py-6 sm:px-6">
       <header className="w-full max-w-md mx-auto flex items-center justify-between gap-2">
-        <BrandMark title="Fiszki" subtitle={t.brandSub} />
+        <BrandMark title="NIHAOWU" subtitle={t.brandSub} />
         <ThemeLocaleControls verboseLocale />
       </header>
 

@@ -3,13 +3,13 @@ import { AppProviders } from "@/context/AppProviders";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Fiszki — Kartoteka Pamięci SM-2",
+  title: "NIHAOWU",
   description:
     "Osobista kartoteka fiszek z algorytmem SM-2 i skanowaniem zdjęć przez Gemini AI.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Fiszki",
+    title: "NIHAOWU",
   },
 };
 
