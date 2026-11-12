@@ -1,5 +1,5 @@
 export const pl = {
-  brandSub: "Kartoteka pamięci SM-2",
+  brandSub: "",
   nav: {
     overview: "Pulpit",
     decks: "Talie",

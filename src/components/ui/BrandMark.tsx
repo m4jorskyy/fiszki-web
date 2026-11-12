@@ -20,7 +20,7 @@ export function BrandMark({
           compact ? "w-7 h-7 text-base" : "w-8 h-8 text-lg"
         } rounded bg-[var(--ink-primary)] text-[var(--bg-card)] flex items-center justify-center font-serif-card font-semibold`}
       >
-        F
+          嘿
       </div>
       <div>
         <span className="font-serif-card font-semibold text-lg tracking-tight block leading-none">
